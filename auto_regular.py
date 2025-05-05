@@ -268,122 +268,6 @@ def check_browser_health():
         log_message("⚠️ Health check failed")
         return False
 
-def setup_date_watcher(target_day):
-    """Set up a JavaScript MutationObserver to watch for date availability"""
-    js_code = f"""
-    window.dateDetected = false;
-    window.targetDay = "{target_day}";
-    
-    // Create a MutationObserver to watch for DOM changes
-    const observer = new MutationObserver(function(mutations) {{
-        mutations.forEach(function(mutation) {{
-            if (mutation.type === 'childList' || mutation.type === 'attributes') {{
-                // Look for date elements that become enabled
-                const dateElements = document.querySelectorAll('div.btn-light');
-                dateElements.forEach(function(element) {{
-                    if (element.textContent.trim() === window.targetDay && 
-                        !element.classList.contains('disabled')) {{
-                        window.dateDetected = true;
-                        window.dateElement = element;
-                        console.log("Date detected by observer!");
-                    }}
-                }});
-            }}
-        }});
-    }});
-    
-    // Start observing the calendar container
-    const calendarContainer = document.querySelector('.ngb-dp-content');
-    if (calendarContainer) {{
-        observer.observe(calendarContainer, {{ 
-            childList: true, 
-            subtree: true, 
-            attributes: true,
-            attributeFilter: ['class'] 
-        }});
-        console.log("Date observer started");
-        return true;
-    }}
-    return false;
-    """
-    try:
-        result = driver.execute_script(js_code)
-        if result:
-            log_message("✅ Date watcher set up")
-        return result
-    except Exception as e:
-        log_message(f"❌ Error setting up date watcher")
-        return False
-
-def check_date_watcher():
-    """Check if the JavaScript date watcher has detected a date"""
-    try:
-        detected = driver.execute_script("return window.dateDetected === true;")
-        if detected:
-            element = driver.execute_script("return window.dateElement;")
-            log_message("🔍 Date detected by watcher!")
-            return element
-        return None
-    except:
-        return None
-
-def rapid_date_check(target_day, max_attempts=5):
-    """Perform rapid consecutive checks for date availability"""
-    for _ in range(max_attempts):
-        try:
-            # Direct, minimal DOM query for faster execution
-            js_code = f"""
-            const dateElements = document.querySelectorAll('div.btn-light');
-            for (let i = 0; i < dateElements.length; i++) {{
-                const element = dateElements[i];
-                if (element.textContent.trim() === "{target_day}" && 
-                    !element.classList.contains('disabled')) {{
-                    return element;
-                }}
-            }}
-            return null;
-            """
-            element = driver.execute_script(js_code)
-            if element:
-                log_message(f"✅ Date {target_day} found with rapid check!")
-                return element
-        except:
-            pass
-        # Very short sleep to prevent CPU overload
-        time.sleep(0.05)
-    return None
-
-def preload_calendar_data():
-    """Preload calendar data to reduce latency when dates are released"""
-    js_code = """
-    // Preemptively fetch calendar data
-    try {
-        const today = new Date();
-        const year = today.getFullYear();
-        const month = today.getMonth();
-        
-        // Create a fetch request to preload calendar data
-        fetch(`https://www.epassport.gov.bd/api/calendar/dates?year=${year}&month=${month}`, {
-            method: 'GET',
-            credentials: 'include'
-        }).then(response => {
-            console.log("Calendar data preloaded");
-            return true;
-        }).catch(error => {
-            console.error("Failed to preload calendar data");
-            return false;
-        });
-        return true;
-    } catch (e) {
-        return false;
-    }
-    """
-    try:
-        driver.execute_script(js_code)
-        log_message("🔄 Preloaded calendar data")
-    except:
-        pass
-
 def main_task():
     global driver
 
@@ -425,7 +309,7 @@ def main_task():
     )
 
     last_switch_time = time.time()
-    switch_interval = 8
+    switch_interval = 20
     consecutive_empty_checks = 0
     max_empty_checks = 3
 
@@ -582,11 +466,3 @@ def main_task():
 
 if __name__ == "__main__":
     main_task()
-
-"""
-buessnessman13@gmail.com
-onlinaservice6@gmail.com
-alatif21@outlook.com
-highser7@gmail.com
-sahadat.mso@gmail.com
-"""
