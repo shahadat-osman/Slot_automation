@@ -22,26 +22,10 @@ chrome_options.binary_location = (
 service = Service("/opt/homebrew/bin/chromedriver")
 driver = webdriver.Chrome(service=service, options=chrome_options)
 
-LOG_FILE = "log.txt"
 
-LOGGABLE_MESSAGES = [
-    "=== Automation Log Start ===",
-    "🌐 Opened the login page",
-    "📅 Calendar loaded successfully.",
-    "✅ Date",
-    "⏰ Selecting time slot:",
-    "✅ Slot selected successfully under",
-    "✅ Clicked 'Save and Continue' button.",
-    "✅ Summary page loaded successfully.",
-    "🛑 Browser closed successfully.",
-]
 
 def log_message(message):
     print(message)
-
-    if any(loggable in message for loggable in LOGGABLE_MESSAGES):
-        with open(LOG_FILE, "a") as log_file:
-            log_file.write(f"{message}\n")
 
 def wait_for_element(locator, timeout=30):
     try:
@@ -104,15 +88,8 @@ def check_for_errors():
 
 def main_task():
     import random
-    global run_id
-    run_id = random.randint(1, 100)
-    run_folder = f"run_{run_id}"
-    os.makedirs(run_folder, exist_ok=True)
 
-    global LOG_FILE
-    LOG_FILE = os.path.join(run_folder, f"log-{run_id}.txt")
-    with open(LOG_FILE, "w") as log_file:
-        log_file.write("=== Automation Log Start ===\n")
+    log_message("=== Automation Log Start ===\n")
 
     # target_date_str = "10/08/25"
     target_date_str = datetime.now().strftime("%d/%m/%y")
@@ -197,6 +174,7 @@ def main_task():
             if not click_element((By.XPATH, "//span[text()='Save and continue']")):
                 raise Exception("Failed to click 'Save and continue'")
             log_message("✅ Clicked 'Save and Continue' button.")
+            driver.save_screenshot(f"slot.png")
             if check_for_errors():
                 date_clicked = False
                 continue
@@ -204,7 +182,7 @@ def main_task():
                 EC.url_matches(r"https://www.epassport.gov.bd/applications/application-form/.*/summary")
             )
             log_message("✅ Summary page loaded successfully.")
-            driver.save_screenshot(f"{run_folder}/schedule-{run_id}.png")
+            driver.save_screenshot(f"summary.png")
             os.system("afplay /System/Library/Sounds/Glass.aiff")
             os.system("afplay /System/Library/Sounds/Glass.aiff")
             os.system("afplay /System/Library/Sounds/Glass.aiff")
