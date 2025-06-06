@@ -1,5 +1,0 @@
-=== Automation Log Start ===
-[22:22:03.605] 🌐 Opened login page
-[22:22:36.425] 📅 Calendar loaded
-[22:52:36.469] 🔄 Restarting browser
-[22:54:13.603] 📅 Calendar loaded after restart
