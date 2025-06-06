@@ -23,9 +23,9 @@ service = Service("/opt/homebrew/bin/chromedriver")
 driver = webdriver.Chrome(service=service, options=chrome_options)
 
 
-
 def log_message(message):
     print(message)
+
 
 def wait_for_element(locator, timeout=30):
     try:
@@ -35,6 +35,7 @@ def wait_for_element(locator, timeout=30):
     except TimeoutException:
         log_message(f"❌ Timeout waiting for element: {locator}")
         raise
+
 
 def click_element(locator, scroll=True):
     try:
@@ -48,6 +49,7 @@ def click_element(locator, scroll=True):
     except Exception as e:
         log_message(f"❌ Error clicking element: {locator}, {e}")
         return False
+
 
 def alternate_delivery_button(selected_delivery):
     delivery_types = {
@@ -72,11 +74,13 @@ def alternate_delivery_button(selected_delivery):
         log_message(f"⚠️ Failed to switch to '{next_delivery}'.")
         return selected_delivery
 
+
 def handle_failure_and_retry():
     log_message("🔄 Refreshing the page to retry...")
     os.system("afplay /System/Library/Sounds/Funk.aiff")
     driver.refresh()
     time.sleep(3)
+
 
 def check_for_errors():
     error_message_container = driver.find_elements(By.CLASS_NAME, "error-messages")
@@ -86,12 +90,13 @@ def check_for_errors():
         return True
     return False
 
+
 def main_task():
     import random
 
     log_message("=== Automation Log Start ===\n")
 
-    # target_date_str = "10/08/25"
+    # target_date_str = "09/08/25"
     target_date_str = datetime.now().strftime("%d/%m/%y")
     target_date = datetime.strptime(target_date_str, "%d/%m/%y")
     target_day = target_date.day
@@ -109,16 +114,22 @@ def main_task():
         date_clicked = False
         try:
             # Wait for the target date to be present and clickable
-            date_element = WebDriverWait(driver, 5).until(
-                EC.presence_of_element_located((By.XPATH, f"//div[@class='btn-light' and text()='{target_day}']"))
+            date_element = WebDriverWait(driver, 2.5).until(
+                EC.presence_of_element_located(
+                    (By.XPATH, f"//div[@class='btn-light' and text()='{target_day}']")
+                )
             )
             if "disabled" not in date_element.get_attribute("class"):
                 try:
-                    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", date_element)
+                    driver.execute_script(
+                        "arguments[0].scrollIntoView({block: 'center'});", date_element
+                    )
                     date_element.click()
                     if check_for_errors():
                         continue
-                    log_message(f"✅ Date {target_day} selected under '{selected_delivery}'.")
+                    log_message(
+                        f"✅ Date {target_day} selected under '{selected_delivery}'."
+                    )
                     date_clicked = True
                 except Exception as e:
                     log_message(f"❌ Error clicking date element: {e}")
@@ -129,26 +140,30 @@ def main_task():
                 selected_delivery = alternate_delivery_button(selected_delivery)
                 continue
         except TimeoutException:
-            log_message("❌ date not found. Retrying dynamically...")
+            # log_message("❌ date not found. Retrying dynamically...")
             selected_delivery = alternate_delivery_button(selected_delivery)
             continue
 
-        
         try:
             log_message("⏳ Waiting for slots...")
             time_slots_container = wait_for_element((By.CLASS_NAME, "vbeop-time-slots"))
-            time_slot_labels = time_slots_container.find_elements(By.CLASS_NAME, "time-slot")
+            time_slot_labels = time_slots_container.find_elements(
+                By.CLASS_NAME, "time-slot"
+            )
             slot_selected = False
 
-            while time_slot_labels:  # Keep trying until we run out of options
-                time_slot = choice(time_slot_labels)  # Randomly pick a time slot
-                # time_slot_labels.remove(time_slot)  # Remove it from the list to avoid retries
-                associated_input = driver.find_element(By.ID, time_slot.get_attribute("for"))
+            while time_slot_labels:
+                time_slot = choice(time_slot_labels)
+                associated_input = driver.find_element(
+                    By.ID, time_slot.get_attribute("for")
+                )
                 if associated_input.is_enabled():
                     log_message(f"⏰ Selecting time slot: {time_slot.text}")
                     try:
                         time_slot.click()
-                        log_message(f"✅ Slot selected under '{selected_delivery}' with time slot '{time_slot.text}'.")
+                        log_message(
+                            f"✅ Slot selected under '{selected_delivery}' with time slot '{time_slot.text}'."
+                        )
                         if check_for_errors():
                             date_clicked = False
                             slot_selected = False
@@ -175,15 +190,17 @@ def main_task():
                 raise Exception("Failed to click 'Save and continue'")
             log_message("✅ Clicked 'Save and Continue' button.")
             driver.save_screenshot(f"slot.png")
+            os.system("afplay /System/Library/Sounds/Glass.aiff")
             if check_for_errors():
                 date_clicked = False
                 continue
             WebDriverWait(driver, 30).until(
-                EC.url_matches(r"https://www.epassport.gov.bd/applications/application-form/.*/summary")
+                EC.url_matches(
+                    r"https://www.epassport.gov.bd/applications/application-form/.*/summary"
+                )
             )
             log_message("✅ Summary page loaded successfully.")
             driver.save_screenshot(f"summary.png")
-            os.system("afplay /System/Library/Sounds/Glass.aiff")
             os.system("afplay /System/Library/Sounds/Glass.aiff")
             os.system("afplay /System/Library/Sounds/Glass.aiff")
         except Exception as e:
@@ -201,6 +218,7 @@ def main_task():
         driver.quit()
         log_message("🛑 Browser closed successfully.")
         break
+
 
 if __name__ == "__main__":
     main_task()
