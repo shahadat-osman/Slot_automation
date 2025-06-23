@@ -1,0 +1,44 @@
+# Environment variables (sensitive data)
+.env
+config.py
+emails.txt
+koder.py
+mso.py
+sas_notific.py
+sas.py
+
+# Screenshots
+*.png
+*.jpg
+*.jpeg
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environment
+venv/
+env/
+ENV/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# MacOS
+.DS_Store
+
+# Logs
+*.log
+
+# Chrome driver logs
+chromedriver.log
+
+# Backup files
+*.bak
+*.backup
