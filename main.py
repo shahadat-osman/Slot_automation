@@ -46,8 +46,8 @@ if missing_vars:
 CONFIG = {
     "BRAVE_PATH": BRAVE_PATH,
     "CHROMEDRIVER_PATH": CHROMEDRIVER_PATH,
-    # "TARGET_DATE_STR": "23/10/25"
-    "TARGET_DATE_STR": datetime.now().strftime("%d/%m/%y"),
+    "TARGET_DATE_STR": datetime.now().strftime("%d/%m/%y"),  # Live mode
+    # "TARGET_DATE_STR": "23/10/25",  # Test mode - uncomment for testing
     "DELIVERY_TYPES": {
         "Regular delivery": "//label[@for='delivery-type-idRegistrationForm.DeliveryOptions.DeliveryTypeLabels.REGULAR']",
         "Express delivery": "//label[@for='delivery-type-idRegistrationForm.DeliveryOptions.DeliveryTypeLabels.EXPRESS']",
@@ -59,13 +59,14 @@ CONFIG = {
     "HOT_WINDOW": {
         "START_SEC": getattr(sys.modules[__name__], 'HOT_WINDOW_START', 48),
         "END_SEC": getattr(sys.modules[__name__], 'HOT_WINDOW_END', 15),
-        "RAPID_SWITCH_INTERVAL": getattr(sys.modules[__name__], 'SWITCH_INTERVAL', 0.08),
+        "RAPID_SWITCH_INTERVAL": getattr(sys.modules[__name__], 'SWITCH_INTERVAL', 4.0),
+        "DATE_CHECK_INTERVAL": getattr(sys.modules[__name__], 'DATE_CHECK_INTERVAL', 1.0),
         "UI_DELAY_COMPENSATION": 1.0,
     },
     "TIMEOUTS": {
         "CALENDAR_LOAD": 90,
-        "SLOT_LOAD": 10,
-        "SAVE_BUTTON": 5,
+        "SLOT_LOAD": 10,  # Very fast slot loading - 2 seconds max
+        "SAVE_BUTTON": 10,
         "SUMMARY_PAGE": 30,
         "EMAIL_FIELD": 10,
         "PAGE_LOAD": 10,
@@ -208,7 +209,9 @@ class PassportAutomation:
             "--disable-blink-features=AutomationControlled",
             "--disable-save-password-bubble",
             "--disable-password-manager",
-            "--disable-password-generation"
+            "--disable-password-generation",
+            "--memory-pressure-off",  # Reduce memory pressure
+            "--max-old-space-size=2048"  # Limit memory usage
         ]
         
         for arg in optimization_args:
@@ -278,7 +281,7 @@ class PassportAutomation:
             return self.email
 
     def send_telegram_notification(self, name, time_str, email):
-        message = f"Name: {name}\nTime: {time_str}\nEmail: {email}"
+        message = f"🎉 PASSPORT SLOT BOOKED! 🎉\n\nName: {name}\nTime: {time_str}\nEmail: {email}\n\n✅ Booked at {datetime.now().strftime('%H:%M:%S')}"
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
         
         success = False
@@ -302,7 +305,7 @@ class PassportAutomation:
 
     def send_fallback_notification(self):
         try:
-            message = f"Passport slot booked at {datetime.now().strftime('%H:%M:%S')}. Check browser for details."
+            message = f"🎉 PASSPORT SLOT BOOKED! 🎉\n\nBooked at {datetime.now().strftime('%H:%M:%S')}.\nCheck browser for details."
             url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
             
             for chat_id in TELEGRAM_CHAT_IDS:
@@ -390,11 +393,21 @@ class PassportAutomation:
             log_message(f"D{self.driver_id}: Calendar timeout", level="error")
             return False
 
-    def rapid_switching_in_hot_window(self):
-        log_message(f"D{self.driver_id}: HOT WINDOW")
+    def clear_browser_cache(self):
+        """Clear browser cache to maintain performance"""
+        try:
+            self.driver.execute_script("window.performance.clearResourceTimings();")
+            self.driver.execute_script("window.performance.clearMeasures();")
+        except Exception:
+            pass
+
+    def synchronized_switching_in_hot_window(self):
+        """Server-friendly synchronized switching - much slower but stable"""
+        log_message(f"D{self.driver_id}: HOT WINDOW - Server-friendly switching")
         
         delivery_options = ["Regular delivery", "Express delivery"]
-        current_option = self.driver_id % 2
+        # Driver 1 starts with Regular, Driver 2 starts with Express (staggered)
+        current_option_index = (self.driver_id - 1) % 2
         
         start_time = time.time()
         remaining_time = self.get_hot_window_remaining_time()
@@ -406,37 +419,40 @@ class PassportAutomation:
         while ((time.time() - start_time) < remaining_time and 
                not session_terminated_event.is_set()):
             
-            current_delivery = delivery_options[current_option]
+            current_delivery = delivery_options[current_option_index]
             
             try:
-                element = self.driver.find_element(By.XPATH, delivery_xpaths[current_option])
+                # Switch to current delivery option
+                element = self.driver.find_element(By.XPATH, delivery_xpaths[current_option_index])
                 self.driver.execute_script("arguments[0].click();", element)
                 switch_count += 1
                 
-                if switch_count % 60 == 0:
-                    log_message(f"D{self.driver_id}: {switch_count} switches")
+                if switch_count % 2 == 0:  # Log every 2 switches (less frequent)
+                    log_message(f"D{self.driver_id}: {switch_count} switches - On {current_delivery}")
                     if self.quick_error_check():
-                        log_message(f"D{self.driver_id}: Error box detected")
+                        log_message(f"D{self.driver_id}: Error detected")
                         return False, None
                 
-                for check_delay in [0, 0.3, 0.8]:
-                    if session_terminated_event.is_set():
-                        return False, None
+                # Give UI much more time to update - server-friendly
+                time.sleep(1.0)  # Longer wait for UI stability
+                
+                # Single date check per switch (not 3 times)
+                if session_terminated_event.is_set():
+                    return False, None
+                
+                if self._check_and_click_date(date_xpath, current_delivery):
+                    return True, current_delivery
+                
+                # Switch to opposite option for next iteration
+                current_option_index = 1 - current_option_index
+                
+                # Much longer wait between switches - be kind to server
+                time.sleep(CONFIG["HOT_WINDOW"]["RAPID_SWITCH_INTERVAL"])  # 4 seconds
                         
-                    if check_delay > 0:
-                        time.sleep(check_delay)
-                    
-                    if self._check_and_click_date(date_xpath, current_delivery):
-                        return True, current_delivery
-                    
-                    if check_delay >= 0.8:
-                        break
-                        
-            except Exception:
-                pass 
-            
-            current_option = 1 - current_option
-            time.sleep(CONFIG["HOT_WINDOW"]["RAPID_SWITCH_INTERVAL"])
+            except Exception as e:
+                # Add delay even on errors to not hammer server
+                time.sleep(1.0)
+                pass
         
         log_message(f"D{self.driver_id}: Window ended - {switch_count} switches")
         return False, None
@@ -468,33 +484,44 @@ class PassportAutomation:
 
     def handle_slot_selection(self):
         try:
-            log_message(f"D{self.driver_id}: Loading slots")
+            log_message(f"D{self.driver_id}: Fast slot loading (2s max)")
             
-            time_slots_container = WebDriverWait(self.driver, CONFIG["TIMEOUTS"]["SLOT_LOAD"]).until(
-                EC.presence_of_element_located((By.CLASS_NAME, XPATHS["TIME_SLOTS_CONTAINER"]))
-            )
+            # Immediate check for slots - don't wait for full page load
+            try:
+                # Quick check if slots are already visible
+                time_slots_container = self.driver.find_element(By.CLASS_NAME, XPATHS["TIME_SLOTS_CONTAINER"])
+            except NoSuchElementException:
+                # If not found immediately, wait briefly
+                try:
+                    time_slots_container = WebDriverWait(self.driver, CONFIG["TIMEOUTS"]["SLOT_LOAD"]).until(
+                        EC.presence_of_element_located((By.CLASS_NAME, XPATHS["TIME_SLOTS_CONTAINER"]))
+                    )
+                except TimeoutException:
+                    log_message(f"D{self.driver_id}: Slot container timeout - continuing to next window")
+                    return False
             
+            # Fast check for no slots message
             if self.check_no_slots_message():
-                log_message(f"D{self.driver_id}: No slots - ending session")
+                log_message(f"D{self.driver_id}: No slots available")
                 session_terminated_event.set()
                 return False
             
+            # Get slot elements immediately
             time_slot_labels = time_slots_container.find_elements(By.CLASS_NAME, XPATHS["TIME_SLOT"])
             
             if not time_slot_labels:
-                log_message(f"D{self.driver_id}: No slot elements")
+                log_message(f"D{self.driver_id}: No slot elements found")
                 session_terminated_event.set()
                 return False
             
-            random.shuffle(time_slot_labels)
-            
+            # Immediate slot selection - no shuffling to save time
             for time_slot in time_slot_labels:
                 try:
                     associated_input = self.driver.find_element(By.ID, time_slot.get_attribute("for"))
                     if associated_input.is_enabled():
-                        log_message(f"D{self.driver_id}: Selecting slot")
+                        log_message(f"D{self.driver_id}: FAST slot select")
                         self.driver.execute_script("arguments[0].click();", time_slot)
-                        log_message(f"D{self.driver_id}: Slot selected")
+                        log_message(f"D{self.driver_id}: Slot selected ✅")
                         return True
                 except Exception:
                     continue
@@ -505,8 +532,7 @@ class PassportAutomation:
             
         except Exception as e:
             log_message(f"D{self.driver_id}: Slot selection failed: {e}", level="error")
-            session_terminated_event.set()
-            return False
+            return False  # Continue to next window instead of terminating
 
     def process_booking_success(self):
         try:
@@ -569,7 +595,11 @@ class PassportAutomation:
                 if session_terminated_event.is_set():
                     break
                 
-                success, delivery = self.rapid_switching_in_hot_window()
+                # Clear cache periodically for better performance
+                self.clear_browser_cache()
+                
+                # Use synchronized switching strategy
+                success, delivery = self.synchronized_switching_in_hot_window()
                 
                 if success:
                     if self.handle_slot_selection():
@@ -605,7 +635,10 @@ def run_automation_thread(automation):
         log_message(f"D{automation.driver_id}: Thread completed")
 
 def main():
-    log_message("Starting passport slot booking automation")
+    log_message("🚀 Starting SERVER-FRIENDLY passport slot booking automation")
+    log_message(f"⚡ Slower timing to prevent server overload")
+    log_message(f"⚡ Driver 1: Regular→Express | Driver 2: Express→Regular") 
+    log_message(f"⚡ Timing: 4s switching + 1s checks - Much gentler on server")
     
     display_email_list()
     selected_emails = get_email_selection()
@@ -653,7 +686,7 @@ def main():
         thread1 = threading.Thread(target=run_automation_thread, args=(automation1,))
         thread2 = threading.Thread(target=run_automation_thread, args=(automation2,))
 
-        log_message("Starting automation threads...")
+        log_message("🎯 Starting competitive automation threads...")
         thread1.start()
         thread2.start()
 
